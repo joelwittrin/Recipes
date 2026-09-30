@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Swipe</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #111;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Sans', sans-serif;
+    color: #f0f0f0;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .counter {
+    display: flex;
+    gap: 24px;
+    font-size: 0.78rem;
+    color: #555;
+    margin-bottom: 24px;
+  }
+  .counter span { display: flex; align-items: center; gap: 5px; }
+  .num { font-weight: 700; font-size: 0.95rem; }
+  .num-l { color: #e74c3c; }
+  .num-r { color: #2ecc71; }
+  .num-u { color: #f1c40f; }
+
+  .stack {
+    position: relative;
+    width: 300px;
+    height: 420px;
+    margin-bottom: 28px;
+  }
+
+  .card {
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    background: #1e1e1e;
+    border: 1.5px solid rgba(255,255,255,0.07);
+    cursor: grab;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    will-change: transform;
+    text-align: center;
+  }
+  .card:active { cursor: grabbing; }
+
+  .card-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 2rem;
+    font-weight: 800;
+    color: rgba(255,255,255,0.88);
+    pointer-events: none;
+    line-height: 1.1;
+  }
+
+  .card-desc {
+    font-size: 0.88rem;
+    font-weight: 300;
+    color: rgba(255,255,255,0.38);
+    pointer-events: none;
+    line-height: 1.5;
+  }
+
+  .stamp {
+    position: absolute;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-family: 'Syne', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    opacity: 0;
+    pointer-events: none;
+    border-width: 3px;
+    border-style: solid;
+    will-change: opacity;
+  }
+  .stamp-like   { top: 36px; left: 28px;  color: #2ecc71; border-color: #2ecc71; transform: rotate(-12deg); }
+  .stamp-nope   { top: 36px; right: 28px; color: #e74c3c; border-color: #e74c3c; transform: rotate(12deg); }
+  .stamp-unsure { top: 50%; left: 50%; transform: translate(-50%,-50%); color: #f1c40f; border-color: #f1c40f; font-size: 1.3rem; white-space: nowrap; }
+
+  .keys {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #444;
+  }
+  .key {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 5px;
+    padding: 2px 7px;
+    color: rgba(255,255,255,0.25);
+    font-size: 0.68rem;
+  }
+
+  .empty {
+    display: none;
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    background: #1a1a1a;
+    border: 2px dashed rgba(255,255,255,0.08);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    text-align: center;
+    padding: 30px;
+  }
+  .empty-icon  { font-size: 2.4rem; }
+  .empty-title { font-family: 'Syne', sans-serif; font-size: 1.2rem; }
+  .empty-sub   { font-size: 0.8rem; color: #555; line-height: 1.6; }
+  .reload-btn {
+    margin-top: 6px;
+    padding: 10px 24px;
+    background: #222;
+    border: 1.5px solid rgba(255,255,255,0.12);
+    border-radius: 50px;
+    color: #f0f0f0;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="counter">
+  <span>✕ <span class="num num-l" id="cn-l">0</span></span>
+  <span>? <span class="num num-u" id="cn-u">0</span></span>
+  <span>♥ <span class="num num-r" id="cn-r">0</span></span>
+</div>
+
+<div class="stack" id="stack">
+  <div class="empty" id="empty">
+    <div class="empty-icon">🍽️</div>
+    <div class="empty-title">Inga kort kvar</div>
+    <div class="empty-sub">Du har gått igenom alla maträtter.</div>
+    <button class="reload-btn" onclick="init()">Börja om</button>
+  </div>
+</div>
+
+<div class="keys">
+  <span class="key">←</span> Nope &nbsp;
+  <span class="key">↑</span> Osäker &nbsp;
+  <span class="key">→</span> Like &nbsp;
+  <span class="key">↓</span> Ångra
+</div>
+
+<script>
+const counts = { left: 0, right: 0, unsure: 0 };
+let deck = [], swiped = [];
+let dragging = false, startX = 0, startY = 0, tx = 0, ty = 0;
+let activeCard = null, rafId = null;
+
+async function init() {
+  counts.left = 0; counts.right = 0; counts.unsure = 0;
+  updateCounter();
+  document.querySelectorAll('.card').forEach(c => c.remove());
+  document.getElementById('empty').style.display = 'none';
+  deck = []; swiped = [];
+
+  const response = await fetch('/swiper', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([])
+  });
+  const CARDS = await response.json();
+
+  const stack = document.getElementById('stack');
+  for (let i = CARDS.length - 1; i >= 0; i--) {
+    const card = makeCard(CARDS[i]);
+    stack.insertBefore(card, stack.firstChild);
+    deck.unshift(card);
+  }
+  layoutStack(false);
+}
+
+function makeCard(data) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-name">${data.name}</div>
+    ${data.description ? `<div class="card-desc">${data.description}</div>` : ''}
+    <div class="stamp stamp-like">LIKE</div>
+    <div class="stamp stamp-nope">NOPE</div>
+    <div class="stamp stamp-unsure">OSÄKER</div>
+  `;
+  card.addEventListener('mousedown', onDown);
+  return card;
+}
+
+function layoutStack(animate) {
+  deck.forEach((c, i) => {
+    const fromTop = deck.length - 1 - i;
+    if (fromTop > 2) { c.style.visibility = 'hidden'; return; }
+    c.style.visibility = 'visible';
+    c.style.transition = animate ? 'transform 0.28s cubic-bezier(0.34,1.4,0.64,1), filter 0.28s ease' : 'none';
+    if (fromTop === 0)      { c.style.transform = 'scale(1) translateY(0)';       c.style.filter = 'brightness(1)';    c.style.zIndex = 10; }
+    else if (fromTop === 1) { c.style.transform = 'scale(0.95) translateY(12px)'; c.style.filter = 'brightness(0.75)'; c.style.zIndex = 9; }
+    else                    { c.style.transform = 'scale(0.90) translateY(24px)'; c.style.filter = 'brightness(0.5)';  c.style.zIndex = 8; }
+  });
+}
+
+function topCard() { return deck.length ? deck[deck.length - 1] : null; }
+
+function onDown(e) {
+  const card = e.currentTarget;
+  if (card !== topCard()) return;
+  e.preventDefault();
+  dragging = true; activeCard = card;
+  startX = e.clientX; startY = e.clientY;
+  tx = 0; ty = 0;
+  card.style.transition = 'none';
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function onMove(e) {
+  if (!dragging) return;
+  const newTx = e.clientX - startX, newTy = e.clientY - startY;
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(() => { tx = newTx; ty = newTy; applyDrag(); rafId = null; });
+}
+
+function applyDrag() {
+  if (!activeCard) return;
+  activeCard.style.transform = `translate(${tx}px,${ty}px) rotate(${tx * 0.07}deg)`;
+  const isUp = -ty > 60 && Math.abs(tx) < 80;
+  activeCard.querySelector('.stamp-like').style.opacity   = isUp ? 0 : Math.max(0, Math.min((tx - 20) / 80, 1));
+  activeCard.querySelector('.stamp-nope').style.opacity   = isUp ? 0 : Math.max(0, Math.min((-tx - 20) / 80, 1));
+  activeCard.querySelector('.stamp-unsure').style.opacity = isUp ? Math.min((-ty - 60) / 60, 1) : 0;
+}
+
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  document.removeEventListener('mousemove', onMove);
+  document.removeEventListener('mouseup', onUp);
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  const isUp = -ty > 80 && Math.abs(tx) < 80, isDown = ty > 80 && Math.abs(tx) < 80;
+  if      (isUp)      commitUnsure();
+  else if (isDown)    undoCard();
+  else if (tx > 100)  commitSwipe('right');
+  else if (tx < -100) commitSwipe('left');
+  else                snapBack();
+}
+
+function snapBack() {
+  if (!activeCard) return;
+  activeCard.style.transition = 'transform 0.35s cubic-bezier(0.34,1.5,0.64,1)';
+  activeCard.style.transform = 'scale(1) translateY(0)';
+  activeCard.querySelectorAll('.stamp').forEach(s => s.style.opacity = 0);
+  activeCard = null;
+}
+
+function commitSwipe(dir) {
+  const card = activeCard || topCard(); if (!card) return;
+  card.querySelector(dir === 'right' ? '.stamp-like' : '.stamp-nope').style.opacity = 1;
+  card.style.transition = 'transform 0.4s cubic-bezier(0.4,0,1,1), opacity 0.4s ease';
+  card.style.transform  = `translateX(${dir === 'right' ? '130vw' : '-130vw'}) rotate(${dir === 'right' ? 30 : -30}deg)`;
+  card.style.opacity = '0';
+  deck.pop(); swiped.push({ card, action: dir });
+  counts[dir === 'right' ? 'right' : 'left']++;
+  updateCounter(); layoutStack(true);
+  card.addEventListener('transitionend', () => { card.style.visibility = 'hidden'; }, { once: true });
+  activeCard = null;
+  if (!deck.length) document.getElementById('empty').style.display = 'flex';
+}
+
+function commitUnsure() {
+  const card = activeCard || topCard(); if (!card) return;
+  card.querySelector('.stamp-unsure').style.opacity = 1;
+  card.style.transition = 'transform 0.38s cubic-bezier(0.4,0,1,1), opacity 0.38s ease';
+  card.style.transform = 'translateY(-130vh) scale(0.7)';
+  card.style.opacity = '0';
+  deck.pop(); counts.unsure++; updateCounter(); layoutStack(true);
+  card.addEventListener('transitionend', () => {
+    card.style.transition = 'none'; card.style.opacity = '1';
+    card.style.transform = 'scale(0.88) translateY(28px)';
+    card.style.filter = 'brightness(0.4)'; card.style.zIndex = '1';
+    card.style.visibility = 'hidden';
+    card.querySelectorAll('.stamp').forEach(s => s.style.opacity = 0);
+    document.getElementById('stack').insertBefore(card, document.getElementById('stack').firstChild);
+    deck.unshift(card); layoutStack(false);
+  }, { once: true });
+  activeCard = null; swiped.push({ card, action: 'unsure' });
+}
+
+function undoCard() {
+  activeCard = null; if (!swiped.length) { snapBack(); return; }
+  const { card, action } = swiped.pop();
+  if (action === 'unsure') { const idx = deck.indexOf(card); if (idx !== -1) deck.splice(idx, 1); counts.unsure = Math.max(0, counts.unsure - 1); }
+  else counts[action === 'right' ? 'right' : 'left'] = Math.max(0, counts[action === 'right' ? 'right' : 'left'] - 1);
+  updateCounter();
+  card.style.transition = 'none'; card.style.opacity = '1'; card.style.visibility = 'visible';
+  card.style.transform = action === 'unsure' ? 'translateY(-130vh) scale(0.7)' : `translateX(${action === 'right' ? '130vw' : '-130vw'}) rotate(${action === 'right' ? 30 : -30}deg)`;
+  card.querySelectorAll('.stamp').forEach(s => s.style.opacity = 0);
+  document.getElementById('stack').appendChild(card);
+  deck.push(card); card.style.zIndex = 10;
+  card.getBoundingClientRect();
+  card.style.transition = 'transform 0.4s cubic-bezier(0.34,1.4,0.64,1)';
+  card.style.transform = 'scale(1) translateY(0)'; card.style.filter = 'brightness(1)';
+  layoutStack(true);
+  if (deck.length) document.getElementById('empty').style.display = 'none';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft')  { activeCard = topCard(); if (activeCard) commitSwipe('left');  }
+  if (e.key === 'ArrowRight') { activeCard = topCard(); if (activeCard) commitSwipe('right'); }
+  if (e.key === 'ArrowUp')    { activeCard = topCard(); if (activeCard) commitUnsure();       }
+  if (e.key === 'ArrowDown')  undoCard();
+});
+
+function updateCounter() {
+  document.getElementById('cn-l').textContent = counts.left;
+  document.getElementById('cn-r').textContent = counts.right;
+  document.getElementById('cn-u').textContent = counts.unsure;
+}
+
+init();
+</script>
+</body>
+</html>
